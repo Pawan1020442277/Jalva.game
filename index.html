@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Live Predictions — 500 Slots (Hacker UI)</title>
+<style>
+  /* ---------------- theme / base ---------------- */
+  :root{
+    --bg:#020407;
+    --panel:rgba(6,12,20,0.75);
+    --muted:#9aa6b2;
+    --neon:#00ff9c;
+    --neon2:#7df0ff;
+    --accent:#00e5ff;
+    --card-bg:linear-gradient(180deg, rgba(10,14,20,0.85), rgba(6,8,12,0.9));
+    --glass: rgba(255,255,255,0.03);
+    --danger:#ff4d6d;
+    --soft:#102027;
+    --shadow: 0 8px 30px rgba(0,0,0,0.6);
+    --glass-border: rgba(255,255,255,0.04);
+  }
+  *{box-sizing:border-box;font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#cfeefc}
+  html,body{height:100%;margin:0;background:radial-gradient(ellipse at center, rgba(0,12,18,1) 0%, rgba(0,6,10,1) 60%), var(--bg);overflow-y:auto}
+  body{padding:16px 14px 40px; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+
+  /* ---------------- matrix background ---------------- */
+  .matrix {
+    position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;
+    background:
+      radial-gradient(ellipse at 70% 10%, rgba(0,255,180,0.02) 0%, transparent 8%),
+      radial-gradient(ellipse at 10% 90%, rgba(125,240,255,0.02) 0%, transparent 10%);
+  }
+  .binary-rain{
+    position:absolute;inset:0;mix-blend-mode:screen;opacity:0.14;
+    background-image:
+      linear-gradient(transparent 30%, rgba(0,255,140,0.06) 31%, rgba(125,240,255,0.02) 32%),
+      linear-gradient(90deg, rgba(0,255,140,0.02), rgba(125,240,255,0.02));
+    animation: drift 18s linear infinite;
+    filter:blur(1px);
+  }
+  @keyframes drift{ from{transform:translateY(-10%);} to{transform:translateY(10%);} }
+
+  /* moving scanline */
+  .scanline {
+    position:fixed;left:0;right:0;height:1px;top:0;z-index:0;opacity:0.06;
+    background:linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+    animation: scan 6s linear infinite;
+  }
+  @keyframes scan{0%{top:-5%}50%{top:105%}100%{top:-5%}}
+
+  /* subtle flicker overlay */
+  .flicker {
+    position:fixed;inset:0;z-index:0;pointer-events:none;mix-blend-mode:overlay;opacity:0.03;
+    background: repeating-linear-gradient(180deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 3px);
+  }
+
+  /* ---------------- top header ---------------- */
+  .topbar{position:relative;z-index:3;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+  .brand{display:flex;flex-direction:column}
+  h1{font-size:18px;margin:0;color:var(--neon)}
+  .sub{font-size:13px;color:var(--muted);margin-top:4px}
+  .tabs{display:flex;gap:8px;background:rgba(255,255,255,0.02);padding:6px;border-radius:12px;border:1px solid var(--glass-border)}
+  .tab{padding:8px 12px;border-radius:9px;cursor:pointer;font-weight:700;color:var(--muted);background:transparent;border:1px solid transparent;transition:all .18s}
+  .tab.active{background:linear-gradient(90deg, rgba(0,229,255,0.09), rgba(0,255,156,0.06));color:#021;box-shadow:0 6px 18px rgba(0,229,255,0.06) inset, 0 6px 30px rgba(0,229,255,0.04)}
+  .meta{display:flex;gap:10px;align-items:center;background:var(--panel);padding:10px;border-radius:10px;border:1px solid var(--glass-border);box-shadow:var(--shadow);z-index:3}
+
+  .mitem{font-size:13px;color:var(--muted);display:flex;flex-direction:column}
+  .mitem strong{color:var(--neon);font-weight:800}
+
+  /* ---------------- container and cards ---------------- */
+  .container{position:relative;z-index:2;margin-top:14px}
+  .leaderboard{display:flex;align-items:center;gap:12px;background:linear-gradient(90deg, rgba(0,229,255,0.03), rgba(0,255,156,0.02));padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.02);margin-bottom:12px}
+  .leader-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,var(--neon),var(--neon2));color:#001;font-weight:900}
+  .leader-info{font-weight:800;color:#dffbf0}
+
+  .grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;
+  }
+
+  .card{
+    background:var(--card-bg);border-radius:12px;padding:12px;display:flex;gap:12px;align-items:flex-start;
+    border:1px solid rgba(255,255,255,0.03);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    transition: transform .18s, box-shadow .18s, border-color .18s;
+    position:relative; overflow:hidden;
+    min-height:78px;
+  }
+  .card::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(90deg, rgba(0,255,156,0.02), rgba(0,229,255,0.01));
+    mix-blend-mode:screen;opacity:0;
+    transition:opacity .2s;
+  }
+  .card:hover{ transform:translateY(-6px) scale(1.01); box-shadow: 0 20px 40px rgba(0,0,0,0.7); border-color: rgba(0,229,255,0.12)}
+  .card.pinned{border:2px solid var(--neon); background:linear-gradient(180deg, rgba(0,10,10,0.8), rgba(2,6,8,0.9));}
+
+  .avatar{
+    width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#031;
+    box-shadow:0 3px 10px rgba(0,0,0,0.6);
+    border:2px solid rgba(255,255,255,0.03);
+  }
+  .name{font-weight:800;color:var(--neon2);font-size:14px}
+  .hit{font-size:12px;color:var(--muted);margin-top:6px}
+
+  .badge{
+    padding:6px 10px;border-radius:999px;background:transparent;border:1px solid rgba(255,255,255,0.04);
+    color:var(--neon2);font-weight:800;font-size:12px;
+    box-shadow:0 6px 20px rgba(0,229,255,0.02) inset;
+  }
+
+  /* neon progress bar */
+  .progress {
+    height:6px;width:100%;background:rgba(255,255,255,0.03);border-radius:999px;margin-top:10px;overflow:hidden;
+  }
+  .progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--neon),var(--neon2));width:0%;transition:width .8s cubic-bezier(.2,.9,.2,1);box-shadow:0 8px 30px rgba(0,255,156,0.06) inset}
+
+  .trend{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+  .dot{width:18px;height:18px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+  .dot.win{background:linear-gradient(90deg,var(--neon),#b6ffdf);color:#041}
+  .dot.lose{background:rgba(255,255,255,0.03);color:var(--muted)}
+
+  /* tiny animated glyph in corner */
+  .glyph{
+    position:absolute;right:8px;top:8px;font-size:11px;padding:6px;border-radius:6px;background:rgba(255,255,255,0.02);
+    color:var(--muted);border:1px solid rgba(255,255,255,0.02)
+  }
+
+  /* flash on new issue */
+  .pulse-new{
+    animation: neonPulse .9s ease 1;
+  }
+  @keyframes neonPulse{
+    0%{box-shadow:0 0 0 0 rgba(0,255,156,0.0)}
+    30%{box-shadow:0 0 30px 4px rgba(0,255,156,0.08)}
+    100%{box-shadow:0 0 0 0 rgba(0,255,156,0)}
+  }
+
+  /* header glow animation */
+  .title-glow{ text-shadow: 0 0 6px rgba(0,255,156,0.18), 0 0 20px rgba(0,229,255,0.06); animation: glow 3s ease-in-out infinite; }
+  @keyframes glow { 0%{opacity:0.9}50%{opacity:1}100%{opacity:0.9} }
+
+  /* responsive tweak */
+  @media(max-width:720px){
+    .grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+    .avatar{width:44px;height:44px}
+    .card{padding:10px}
+  }
+</style>
+</head>
+<body>
+  <!-- visual background layers -->
+  <div class="matrix"><div class="binary-rain"></div></div>
+  <div class="scanline"></div>
+  <div class="flicker"></div>
+
+  <div class="topbar" style="position:relative;z-index:5">
+    <div class="brand">
+      <h1 class="title-glow">Live Predictions <span style="font-size:12px;color:var(--muted);font-weight:600">— WinGo_30S</span></h1>
+      <div class="sub" style="color:var(--muted)">Kalyugi Live Prediction</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+      <div class="tabs" role="tablist">
+        <div class="tab active" id="tabSize">B/S</div>
+        <div class="tab" id="tabColor">Color</div>
+      </div>
+
+      <div class="meta">
+        <div class="mitem">Next Period: <strong id="nextIssue">—</strong></div>
+        <div class="mitem">Periods: <strong id="periodCount">0</strong></div>
+        <div class="mitem">Last Update: <span id="lastFetch">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container" style="z-index:4">
+    <div id="leaderboard" class="leaderboard" style="display:none"></div>
+    <div class="grid" id="listContainer"></div>
+  </div>
+
+<script>
+(() => {
+  // ---------- TIMING LOGIC (Local Period Generator) ----------
+  let currentPeriod = null;
+  let periodCount = 0;
+
+  function getCurrentPeriod() {
+    const now = new Date();
+    const startHour = 5, startMinute = 30;
+    const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), startHour, startMinute, 0);
+    let elapsedSeconds = Math.floor((now - startTime) / 1000);
+    if (elapsedSeconds < 0) elapsedSeconds = 0;
+
+    const periodCount = Math.floor(elapsedSeconds / 30);
+    const nextPeriodCount = periodCount + 1;
+
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const period = `${y}${m}${d}${String(nextPeriodCount).padStart(5, '0')}`;
+
+    const remaining = 30 - (elapsedSeconds % 30);
+    return { period, remaining, nextPeriodCount };
+  }
+
+  function updatePeriodUI() {
+    const { period, remaining, nextPeriodCount } = getCurrentPeriod();
+    document.getElementById("nextIssue").textContent = period;
+    document.getElementById("lastFetch").textContent = new Date().toLocaleTimeString();
+
+    if (period !== currentPeriod) {
+      currentPeriod = period;
+      periodCount++;
+      document.getElementById("periodCount").textContent = periodCount;
+
+      // Simulate new result
+      const resultNumber = Math.floor(Math.random() * 10);
+      applyActual({ number: resultNumber.toString() });
+    }
+
+    setTimeout(updatePeriodUI, 1000);
+  }
+
+  // ---------- 500 FUNNY + 18+ NAMES ----------
+  const NAMES = [
+    "Pawan soni","Kalyugi","Umesh","Pardeep","Manish","Kajal","Ritik","Kaku","Pokri","Kapil",
+    "Praveen","Halve","Aapa to nu","Billu Sanda","Yasu","Neeraj","Bhadder","Titu","Kala","Krishan",
+    "Uddham","Tulla","Tota","Beeru","Chutiya","Loss hoga","Mat Kar Lala","Rokde Mitr","Phanter","Chameli",
+    "Munni Bai","Dhande Wali","Jony Sins","Miya Khalifa","l@nd Lele","Sani Lion","Kala L@nd","Sorry Bro","Lavel se","Sure Shot",
+    "Yo Yo Hony Singh","Ajja Baby","Chala Ja bsdk","Papa Ji","Kirmada","Mhu Me Lele","Gandmra","Black Dog","Soni Ji","Love You",
+    "Faltu King","Bindaas Bhai","Pagal Patty","Masti Murgi","Naughty Nandu","Desi Don","Chai Lover","Gol Gappa","Samosa Sifu","Chill Chotu",
+    "Jhakaas Jitu","Dhinchak Deep","Drama Queen","Feku Firoz","Garam Gosht","Hawa Hawai","Ishqbaaz","Jalwa Jigar","Khurafati Kumar","Lodu Lal",
+    "Momo Monster","Nimboo Niraj","Oye Omi","Pappi Pankaj","Qawwali Queen","Raita Raja","Sarsabz Sid","Tadka Tom","Ullu Banna","Vicky Viper",
+    "Wajan Wale","Xpress Xavi","Young Yogi","Zinda Dil","Aashiq Andy","Babli Babu","Chipkali Chintu","Dholu Dulha","Ekka Rummy","Feku Raja",
+    "Garmi Ganesh","Hero Hira","Imaan Iqbal","Jhakaas Jolly","Khatarnak Karan","Lollipop Lalu","Masti Mohan","Nazar Nitin","Oont Omi","Peehu Pappu",
+    "Quick Qasim","Rocker Raju","Shor Sharabi","Tension Titu","Ultan Paltan","Vajra Vinod","Witty Willy","Xtreme Xander","Yaar Yadav","Zinda Zubair",
+    "Amazing Amit","Belly Bala","Choco Chotu","Dumdar Dolly","Ek Number","Funty Funda","Gully Guru","Hugger Hari","Idea Iqbal","Joker Jagan",
+    "Kajal Kaka","Laughter Lal","Motu Mintu","Nazar Naresh","Oye Oye Omkar","Paltan Pingu","Quick Qadir","Roly Polly","Sunny Suraaj","Tuk-Tuk Tinku",
+    "Ustaad Umar","Vino Vicky","Wagle Wagle","Xanadu Xav","Yummy Yash","Zehri Zafar","Andaaz Aman","Babloo Beta","Chacha Chaudhary","Dhoom Deepak",
+    "Ekdum Eklavya","Fizzy Falguni","Gadget Guru","Hustle Hitesh","Intel Iqbal","Jalwa Jignesh","Kaboom Karan","Loopy Laxmi","Masti Mala","Nimboo Neeraj",
+    "Omi Oye","Pappi Pappu","Quick Quirky","Raja Rumble","Sound Suraj","Tota Tinku","Uncle Uday","Vibe Vinay","Whisky Wale","Xtra Xtra",
+    "Yoddha Yash","Zeal Zubin","Alpha Ajay","Bravo Babloo","Clever Chetan","Dashing Deep","Energetic Esha","Funky Farhan","Giggly Golu","Happy Himmat",
+    "Icecream Ilyas","Jolly Jatin","Kool Karan","Lucky Lalu","Mazza Mohit","Naughty Naman","Optimist Om","Pahalwan Punit","Quiet Qamar","Rascal Rishi",
+    "Super Sagar","Turbo Tanu","Uddam Umesh","Vicky Vagabond","Wacky Waman","Xpert Xavier","Yaaron Yashu","Zippy Zahir","Aqua Arjun","Babli Bijay",
+    "Chill Champ","Dazzle Danish","Echo Eklavya","Flare Feroz","Glow Gagan","Hustler Harnam","Ignite Ishan","Jive Jatin","Kite Kunal","Lively Lalit",
+    "Maverick Manoj","Nimble Nilesh","Orbit Ojas","Pepper Pranav","Quirk Qais","Rumble Ramesh","Spicy Sanjay","Turbo Teja","Urban Uday","Vivid Vikram",
+    "Wise Wasim","Xeno Xubair","Yummy Yuvraj","Zesty Zafar","Action Ajit","Blaze Bhanu","Cobra Chetan","Dashy Danish","Electric Ebin","Feisty Faraz",
+    "Groovy Gaurav","Heat Hiren","Icing Iqbal","Jazzy Javed","Keen Kiran","Loco Lokesh","Mighty Mithun","Nifty Nadeem","Omega Omkar","Prankish Punit",
+    // 300 NEW FUNNY + 18+ NAMES
+    "G@nd Ka Doctor","Chut Ka Raja","L@nd Ka King","Bhen Ka Loader","Maa Ki Chut","Papa Ka L@nd","Behenchod Pro",
+    "G@nd Marao","L@nd Chuso","Chutiya Player","Maa Ka Bhartiya","Bhen Ka Bhai","G@nd Fat Gyi","L@nd Ka Dushman",
+    "Chut Ka Hacker","Porn Ka Papa","Nangi Aunty","L@nd Ka Fan","G@nd Ka DJ","Chut Ka Champion","Bhen Ka Loader",
+    "Maa Ka L@nd","Porn Ka Pro","L@nd Ka Scientist","G@nd Ka Engineer","Chut Ka Mechanic","Bhen Ka Pilot","Maa Ka Hacker",
+    "L@nd Ka Astronaut","G@nd Ka Pilot","Chut Ka CEO","Bhen Ka DJ","Maa Ka Pro Player","L@nd Ka Hacker","G@nd Ka CEO",
+    "Chut Ka Scientist","Bhen Ka Engineer","Maa Ka Mechanic","L@nd Ka Pilot","G@nd Ka Hacker","Chut Ka Pro","Bhen Ka Scientist",
+    "Maa Ka Engineer","L@nd Ka Mechanic","G@nd Ka Pilot","Chut Ka Hacker","Bhen Ka CEO","Maa Ka DJ","L@nd Ka Pro",
+    "G@nd Ka Scientist","Chut Ka Engineer","Bhen Ka Mechanic","Maa Ka Pilot","L@nd Ka Hacker","G@nd Ka CEO","Chut Ka DJ",
+    "Bhen Ka Pro","Maa Ka Scientist","L@nd Ka Engineer","G@nd Ka Mechanic","Chut Ka Pilot","Bhen Ka Hacker","Maa Ka CEO",
+    "L@nd Ka DJ","G@nd Ka Pro","Chut Ka Scientist","Bhen Ka Engineer","Maa Ka Mechanic","L@nd Ka Pilot","G@nd Ka Hacker",
+    "Chut Ka CEO","Bhen Ka DJ","Maa Ka Pro","L@nd Ka Scientist","G@nd Ka Engineer","Chut Ka Mechanic","Bhen Ka Pilot",
+    "Maa Ka Hacker","L@nd Ka CEO","G@nd Ka DJ","Chut Ka Pro","Bhen Ka Scientist","Maa Ka Engineer","L@nd Ka Mechanic",
+    "G@nd Ka Pilot","Chut Ka Hacker","Bhen Ka CEO","Maa Ka DJ","L@nd Ka Pro","G@nd Ka Scientist","Chut Ka Engineer",
+    "Bhen Ka Mechanic","Maa Ka Pilot","L@nd Ka Hacker","G@nd Ka CEO","Chut Ka DJ","Bhen Ka Pro","Maa Ka Scientist",
+    "L@nd Ka Engineer","G@nd Ka Mechanic","Chut Ka Pilot","Bhen Ka Hacker","Maa Ka CEO","L@nd Ka DJ","G@nd Ka Pro",
+    "Chut Ka Scientist","Bhen Ka Engineer","Maa Ka Mechanic","L@nd Ka Pilot","G@nd Ka Hacker","Chut Ka CEO","Bhen Ka DJ",
+    "Maa Ka Pro","L@nd Ka Scientist","G@nd Ka Engineer","Chut Ka Mechanic","Bhen Ka Pilot","Maa Ka Hacker","L@nd Ka CEO",
+    "G@nd Ka DJ","Chut Ka Pro","Bhen Ka Scientist","Maa Ka Engineer","L@nd Ka Mechanic","G@nd Ka Pilot","Chut Ka Hacker",
+    "Bhen Ka CEO","Maa Ka DJ","L@nd Ka Pro","G@nd Ka Scientist","Chut Ka Engineer","Bhen Ka Mechanic","Maa Ka Pilot",
+    "L@nd Ka Hacker","G@nd Ka CEO","Chut Ka DJ","Bhen Ka Pro","Maa Ka Scientist","L@nd Ka Engineer","G@nd Ka Mechanic",
+    "Chut Ka Pilot","Bhen Ka Hacker","Maa Ka CEO","L@nd Ka DJ","G@nd Ka Pro","Chut Ka Scientist","Bhen Ka Engineer",
+    "Maa Ka Mechanic","L@nd Ka Pilot","G@nd Ka Hacker","Chut Ka CEO","Bhen Ka DJ","Maa Ka Pro","L@nd Ka Scientist",
+    "G@nd Ka Engineer","Chut Ka Mechanic","Bhen Ka Pilot","Maa Ka Hacker","L@nd Ka CEO","G@nd Ka DJ","Chut Ka Pro",
+    "Bhen Ka Scientist","Maa Ka Engineer","L@nd Ka Mechanic","G@nd Ka Pilot","Chut Ka Hacker","Bhen Ka CEO","Maa Ka DJ",
+    "L@nd Ka Pro","G@nd Ka Scientist","Chut Ka Engineer","Bhen Ka Mechanic","Maa Ka Pilot","L@nd Ka Hacker","G@nd Ka CEO",
+    "Chut Ka DJ","Bhen Ka Pro","Maa Ka Scientist","L@nd Ka Engineer","G@nd Ka Mechanic","Chut Ka Pilot","Bhen Ka Hacker",
+    "Maa Ka CEO","L@nd Ka DJ","G@nd Ka Pro","Chut Ka Scientist","Bhen Ka Engineer","Maa Ka Mechanic","L@nd Ka Pilot",
+    "G@nd Ka Hacker","Chut Ka CEO","Bhen Ka DJ","Maa Ka Pro","L@nd Ka Scientist","G@nd Ka Engineer","Chut Ka Mechanic",
+    "Bhen Ka Pilot","Maa Ka Hacker","L@nd Ka CEO","G@nd Ka DJ","Chut Ka Pro","Bhen Ka Scientist","Maa Ka Engineer",
+    "L@nd Ka Mechanic","G@nd Ka Pilot","Chut Ka Hacker","Bhen Ka CEO","Maa Ka DJ","L@nd Ka Pro","G@nd Ka Scientist",
+    "Chut Ka Engineer","Bhen Ka Mechanic","Maa Ka Pilot","L@nd Ka Hacker","G@nd Ka CEO","Chut Ka DJ","Bhen Ka Pro",
+    "Maa Ka Scientist","L@nd Ka Engineer","G@nd Ka Mechanic","Chut Ka Pilot","Bhen Ka Hacker","Maa Ka CEO","L@nd Ka DJ",
+    "G@nd Ka Pro","Chut Ka Scientist","Bhen Ka Engineer","Maa Ka Mechanic","L@nd Ka Pilot","G@nd Ka Hacker","Chut Ka CEO",
+    "Bhen Ka DJ","Maa Ka Pro","L@nd Ka Scientist","G@nd Ka Engineer","Chut Ka Mechanic","Bhen Ka Pilot","Maa Ka Hacker",
+    "L@nd Ka CEO","G@nd Ka DJ","Chut Ka Pro","Bhen Ka Scientist","Maa Ka Engineer","L@nd Ka Mechanic","G@nd Ka Pilot",
+    "Chut Ka Hacker","Bhen Ka CEO","Maa Ka DJ","L@nd Ka Pro","G@nd Ka Scientist","Chut Ka Engineer","Bhen Ka Mechanic"
+  ];
+
+  // ---------- logic ----------
+  const colorMap = {0:"red",1:"green",2:"red",3:"green",4:"red",5:"green",6:"red",7:"green",8:"red",9:"violet"};
+  const sizeOf = n => (n>=5?"Big":"Small");
+  const randNum = () => Math.floor(Math.random()*10);
+
+  let slots = [], visibleMode = 'size';
+  const listContainer = document.getElementById('listContainer');
+  const nextIssueEl = document.getElementById('nextIssue');
+  const periodCountEl = document.getElementById('periodCount');
+  const lastFetchEl = document.getElementById('lastFetch');
+  const leaderboard = document.getElementById('leaderboard');
+
+  // Create 500 slots
+  for(let i = 0; i < 500; i++){
+    const p = randNum();
+    const name = NAMES[i % NAMES.length] || ("Player"+(i+1));
+    const slot = {
+      id: i+1,
+      name,
+      predictedNumber: p,
+      predictedColor: colorMap[p],
+      predictedSize: sizeOf(p),
+      winsColor: 0, winsSize: 0, lossesColor: 0, lossesSize: 0,
+      history: [], pinned: false, el: null
+    };
+    slots.push(slot);
+  }
+
+  function makeCard(s){
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+      <div class="avatar" style="background:linear-gradient(180deg,hsl(${(s.id*37)%360} 70% 95%),hsl(${(s.id*37)%360} 70% 88%))">${s.name[0].toUpperCase()}</div>
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><div class="name">${s.name}</div><div id="hit-${s.id}" class="hit">Hit:0%</div></div>
+          <div id="plan-${s.id}" class="badge">${s.predictedSize}</div>
+        </div>
+        <div class="trend" id="trend-${s.id}"></div>
+        <div class="progress" id="prog-${s.id}" aria-hidden><i style="width:0%"></i></div>
+      </div>
+      <div class="glyph">#${s.id}</div>
+    `;
+    div.ondblclick = () => { s.pinned = !s.pinned; div.classList.toggle('pinned', s.pinned); sortSlots(); };
+    s.el = div;
+    return div;
+  }
+
+  slots.forEach(s => listContainer.appendChild(makeCard(s)));
+
+  function renderSlot(s){
+    const hit = document.getElementById(`hit-${s.id}`);
+    const plan = document.getElementById(`plan-${s.id}`);
+    const trend = document.getElementById(`trend-${s.id}`);
+    const prog = document.getElementById(`prog-${s.id}`)?.querySelector('i');
+    const wins = (visibleMode==='size'?s.winsSize:s.winsColor);
+    const losses = (visibleMode==='size'?s.lossesSize:s.lossesColor);
+    const rate = (wins+losses)?Math.round(wins/(wins+losses)*100):0;
+    if(hit) hit.textContent = `Hit:${rate}%`;
+    if(plan) plan.textContent = (visibleMode==='size'?s.predictedSize:s.predictedColor);
+    if(prog) prog.style.width = rate + '%';
+    if(trend){
+      trend.innerHTML = '';
+      s.history.slice(0,10).forEach(h=>{
+        const d = document.createElement('div');
+        d.className = 'dot ' + ((visibleMode==='size'?h.winSize:h.winColor)?'win':'lose');
+        d.textContent = (visibleMode==='size'? (h.winSize ? 'Hit' : 'Miss') : (h.winColor ? 'Hit' : 'Miss'));
+        trend.appendChild(d);
+      });
+    }
+  }
+
+  function applyActual(act){
+    const num = parseInt(act.number,10);
+    if(isNaN(num)) return;
+    const color = colorMap[num], size = sizeOf(num);
+    slots.forEach(s=>{
+      const pred = s.predictedNumber;
+      const winC = colorMap[pred] === color;
+      const winS = sizeOf(pred) === size;
+      if(winC) s.winsColor++; else s.lossesColor++;
+      if(winS) s.winsSize++; else s.lossesSize++;
+      s.history.unshift({winColor:winC, winSize:winS});
+      if(s.history.length > 10) s.history.length = 10;
+      const p = randNum(); s.predictedNumber = p; s.predictedColor = colorMap[p]; s.predictedSize = sizeOf(p);
+      renderSlot(s);
+    });
+    document.querySelectorAll('.card').forEach((c, idx) => {
+      if(idx < 40){
+        c.classList.add('pulse-new');
+        setTimeout(() => c.classList.remove('pulse-new'), 900);
+      }
+    });
+    sortSlots();
+  }
+
+  function sortSlots(){
+    const sorted = [...slots].sort((a,b)=>{
+      if(a.pinned && !b.pinned) return -1;
+      if(b.pinned && !a.pinned) return 1;
+      const aw = (visibleMode === 'size') ? a.winsSize : a.winsColor;
+      const bw = (visibleMode === 'size') ? b.winsSize : b.winsColor;
+      return bw - aw;
+    });
+    sorted.forEach(s => listContainer.appendChild(s.el));
+    const top = sorted[0];
+    if(top){
+      leaderboard.style.display = 'flex';
+      leaderboard.innerHTML = `<div class="leader-avatar">${top.name[0].toUpperCase()}</div><div class="leader-info">${top.name} • #${top.id} — ${(visibleMode==='size'?top.winsSize:top.winsColor)} wins</div>`;
+    } else leaderboard.style.display = 'none';
+  }
+
+  // Tab controls
+  document.getElementById('tabSize').onclick = () => { visibleMode='size'; toggleTabs(); };
+  document.getElementById('tabColor').onclick = () => { visibleMode='color'; toggleTabs(); };
+  function toggleTabs(){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.getElementById(visibleMode==='size'?'tabSize':'tabColor').classList.add('active');
+    slots.forEach(renderSlot); sortSlots();
+  }
+
+  // Initial render
+  slots.forEach(renderSlot);
+  sortSlots();
+  updatePeriodUI(); // Start local period loop
+
+  window._slots = slots;
+})();
+</script>
+</body>
+</html>

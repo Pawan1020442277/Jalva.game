@@ -284,7 +284,7 @@
   <div class="header">
     <div>
       <h1>WIN GO / 30S</h1>
-      <div class="sub">Kalyugi · Live Prediction Grid · 500 Slots</div>
+      <div class="sub">Kalyugi · Live Prediction</div>
     </div>
     <div class="tabs">
       <div class="tab active" id="tabSize">
@@ -445,7 +445,7 @@ function renderSlot(s) {
     const ok = visibleMode === "size" ? h.winSize : h.winColor;
     const d = document.createElement("div");
     d.className = "dot " + (ok ? "win" : "lose");
-    d.textContent = ok ? "🎯" : "👁️";
+    d.textContent = ok ? "🤑" : "🖕";
     trend.appendChild(d);
   });
 }
